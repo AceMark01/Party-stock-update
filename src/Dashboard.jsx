@@ -56,16 +56,28 @@ function Dashboard() {
     .slice(0, 8);
 
   const updateStatus = async (id, newStatus) => {
+    const updateData = { status: newStatus };
+
+    // Agar Delivered mark kar rahe ho to delivered_at set kar do
+    if (newStatus === 'delivered') {
+      updateData.delivered_at = new Date().toISOString(); // current date-time
+    }
+
     const { error } = await supabase
       .from('stock_submissions')
-      .update({ status: newStatus })
+      .update(updateData)
       .eq('id', id);
 
     if (error) {
       toast.error('Status update fail');
+      console.error(error);
     } else {
       toast.success(`Status ${newStatus} ho gaya`);
-      setSubmissions(prev => prev.map(s => s.id === id ? { ...s, status: newStatus } : s));
+      setSubmissions(prev =>
+        prev.map(s =>
+          s.id === id ? { ...s, ...updateData } : s
+        )
+      );
     }
   };
 
@@ -107,7 +119,7 @@ function Dashboard() {
               </button>
             </div>
 
-            {/* Mobile Hamburger (Right side) */}
+            {/* Mobile Hamburger */}
             <button 
               className="md:hidden p-2 rounded-lg hover:bg-gray-100"
               onClick={() => setMobileMenuOpen(true)}
@@ -121,13 +133,10 @@ function Dashboard() {
       {/* Mobile Right Side Menu */}
       {mobileMenuOpen && (
         <>
-          {/* Overlay */}
           <div 
             className="fixed inset-0 bg-black/40 z-40 md:hidden"
             onClick={() => setMobileMenuOpen(false)}
           />
-
-          {/* Right Slide-in Menu */}
           <div 
             className={`fixed top-0 right-0 h-full w-72 bg-white shadow-2xl z-50 transform transition-transform duration-300 md:hidden ${
               mobileMenuOpen ? 'translate-x-0' : 'translate-x-full'
@@ -310,6 +319,7 @@ function Dashboard() {
                           <th className="px-6 py-4 text-center text-sm font-medium text-gray-600">Order</th>
                           <th className="px-6 py-4 text-center text-sm font-medium text-gray-600">Photo</th>
                           <th className="px-6 py-4 text-left text-sm font-medium text-gray-600">Date</th>
+                          <th className="px-6 py-4 text-center text-sm font-medium text-gray-600">Delivered At</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-200">
@@ -326,6 +336,11 @@ function Dashboard() {
                             </td>
                             <td className="px-6 py-4 text-sm text-gray-500">
                               {new Date(sub.created_at).toLocaleDateString('en-IN')}
+                            </td>
+                            <td className="px-6 py-4 text-sm text-gray-600">
+                              {sub.delivered_at 
+                                ? new Date(sub.delivered_at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })
+                                : '—'}
                             </td>
                           </tr>
                         ))}
