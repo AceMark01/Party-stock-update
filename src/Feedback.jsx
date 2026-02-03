@@ -1,4 +1,4 @@
-// src/Feedback.jsx - Party-wise Feedback Form (Next-Level UI/UX)
+// src/Feedback.jsx - Party-wise Feedback Form (Next-Level UI/UX + Fixed Audio Upload)
 
 import { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
@@ -36,14 +36,15 @@ function Feedback() {
       mediaRecorderRef.current.onstop = () => {
         const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
         setAudioBlob(blob);
+        console.log('Audio blob created:', blob.size, 'bytes');
       };
 
       mediaRecorderRef.current.start();
       setRecording(true);
-      toast('Recording started... Speak now!');
+      toast('Recording shuru... Bolte raho!');
     } catch (err) {
-      toast.error('Mic access denied or not available');
-      console.error(err);
+      toast.error('Mic permission nahi mili ya available nahi hai');
+      console.error('Mic error:', err);
     }
   };
 
@@ -52,37 +53,62 @@ function Feedback() {
     if (mediaRecorderRef.current) {
       mediaRecorderRef.current.stop();
       setRecording(false);
-      toast.success('Recording stopped!');
+      toast.success('Recording band ho gayi!');
     }
   };
 
   // Submit feedback
   const submitFeedback = async () => {
     if (rating === 0) {
-      toast.error('Please give a rating');
+      toast.error('Rating to do bhai!');
       return;
     }
 
     setLoading(true);
 
     let audioUrl = null;
+
     if (audioBlob) {
       try {
-        const fileName = `${party}_${Date.now()}.webm`;
-        const { data, error } = await supabase.storage
+        const fileName = `${party.replace(/\s+/g, '_')}_${Date.now()}.webm`;
+        console.log('Upload shuru:', fileName, 'size:', audioBlob.size);
+
+        const { data: uploadData, error: uploadError } = await supabase.storage
           .from('feedback-audio')
-          .upload(fileName, audioBlob, { contentType: 'audio/webm' });
+          .upload(fileName, audioBlob, {
+            contentType: 'audio/webm',
+            cacheControl: '3600',
+            upsert: false
+          });
 
-        if (error) throw error;
+        if (uploadError) {
+          console.error('Upload error details:', uploadError);
+          throw uploadError;
+        }
 
-        const { data: urlData } = supabase.storage.from('feedback-audio').getPublicUrl(fileName);
+        console.log('Upload success:', uploadData);
+
+        const { data: urlData } = supabase.storage
+          .from('feedback-audio')
+          .getPublicUrl(fileName);
+
         audioUrl = urlData.publicUrl;
+
+        if (!audioUrl || audioUrl.includes('null') || audioUrl === '') {
+          throw new Error('Public URL nahi mila – bucket public hai?');
+        }
+
+        console.log('Audio URL generated:', audioUrl);
+        toast.success('Audio upload ho gaya!');
       } catch (err) {
-        toast.error('Audio upload failed');
-        console.error(err);
+        console.error('Audio upload full error:', err);
+        toast.error('Audio upload fail hua (bucket check karo)');
       }
+    } else {
+      console.log('No audio recorded');
     }
 
+    // Feedback data save
     const feedbackData = {
       party,
       rating,
@@ -92,15 +118,14 @@ function Feedback() {
       submitted_at: new Date().toISOString()
     };
 
-    const { error } = await supabase.from('feedback').insert(feedbackData);
+    try {
+      const { error } = await supabase.from('feedback').insert(feedbackData);
 
-    if (error) {
-      toast.error('Feedback save failed');
-      console.error(error);
-    } else {
-      toast.success('Feedback submitted! Thank you.');
+      if (error) throw error;
 
-      // If Poor or Average → Send WhatsApp to owner
+      toast.success('Feedback submit ho gaya! Shukriya.');
+
+      // Low rating → owner ko WhatsApp alert
       if (rating <= 2) {
         const ownerMessage = `
 Low Feedback Alert!
@@ -109,21 +134,21 @@ Party: ${party}
 Rating: ${ratingLabels[rating - 1]} (${rating} stars)
 Remark: ${remark || 'No remark'}
 Audio: ${audioUrl || 'No audio'}
-Submitted: ${new Date().toLocaleString()}
-`;
+Time: ${new Date().toLocaleString()}
+        `;
 
         try {
           await fetch('/functions/v1/send-whatsapp', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              to_number: '919131749390', // Owner's number (change to your)
+              to_number: '919131749390', // Owner ka number
               message: ownerMessage
             })
           });
-          toast('Low rating alert sent to owner!');
+          toast('Low rating alert owner ko bhej diya!');
         } catch (err) {
-          console.error('WhatsApp alert failed', err);
+          console.error('WhatsApp alert fail:', err);
         }
       }
 
@@ -131,6 +156,9 @@ Submitted: ${new Date().toLocaleString()}
       setRating(0);
       setRemark('');
       setAudioBlob(null);
+    } catch (err) {
+      console.error('Feedback save error:', err);
+      toast.error('Feedback save nahi hua – console dekho');
     }
 
     setLoading(false);
@@ -196,11 +224,11 @@ Submitted: ${new Date().toLocaleString()}
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Audio Note (optional)
             </label>
-            <div className="flex items-center gap-4">
+            <div className="flex flex-col sm:flex-row items-center gap-4">
               <button
                 type="button"
                 onClick={recording ? stopRecording : startRecording}
-                className={`flex items-center gap-2 px-5 py-3 rounded-xl font-medium transition-all ${
+                className={`flex items-center gap-2 px-5 py-3 rounded-xl font-medium transition-all w-full sm:w-auto ${
                   recording 
                     ? 'bg-red-600 text-white hover:bg-red-700' 
                     : 'bg-indigo-600 text-white hover:bg-indigo-700'
@@ -220,15 +248,19 @@ Submitted: ${new Date().toLocaleString()}
               </button>
 
               {audioBlob && (
-                <div className="text-sm text-green-600">
-                  Audio recorded! (Click submit to send)
+                <div className="text-sm text-green-600 flex-1 text-center sm:text-left">
+                  Audio recorded ({(audioBlob.size / 1024).toFixed(1)} KB)
                 </div>
               )}
             </div>
+
             {audioBlob && (
-              <audio controls className="mt-3 w-full">
-                <source src={URL.createObjectURL(audioBlob)} type="audio/webm" />
-              </audio>
+              <div className="mt-4">
+                <audio controls className="w-full rounded-lg">
+                  <source src={URL.createObjectURL(audioBlob)} type="audio/webm" />
+                  Your browser does not support audio playback.
+                </audio>
+              </div>
             )}
           </div>
 

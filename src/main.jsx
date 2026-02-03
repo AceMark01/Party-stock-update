@@ -4,6 +4,7 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import App from './App.jsx'
 import Dashboard from './Dashboard.jsx'
 import PartyDetail from './PartyDetail.jsx'
+import Feedback from './Feedback.jsx'
 
 import './index.css'
 
