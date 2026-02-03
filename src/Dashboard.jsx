@@ -290,8 +290,40 @@ function Dashboard() {
                             </td>
                             <td className="px-6 py-4 text-center">
                               <button
-                                onClick={() => updateStatus(sub.id, 'delivered')}
-                                className="px-4 py-2 bg-green-600 text-white text-sm rounded hover:bg-green-700"
+                                onClick={async () => {
+                                  await updateStatus(sub.id, 'delivered');
+
+                                  // Delivery hone ke baad WhatsApp/SMS bhejo
+                                  const feedbackLink = `https://party-stock-update.vercel.app/feedback?party=${encodeURIComponent(sub.party)}`;
+
+                                  const message = `
+                              Your order has been delivered!
+
+                              Party: ${sub.party}
+                              Product: ${sub.product_name}
+
+                              Please give us quick feedback (takes 10 seconds):
+                              ${feedbackLink}
+
+                              Thanks for your business!
+                                  `;
+
+                                  try {
+                                    await fetch('/functions/v1/send-whatsapp', {
+                                      method: 'POST',
+                                      headers: { 'Content-Type': 'application/json' },
+                                      body: JSON.stringify({
+                                        to_number: sub.MobileNo || '919131749390',  // Agar table mein MobileNo hai to yahan se lo
+                                        message: message
+                                      })
+                                    });
+                                    toast.success('Delivery marked & feedback link sent!');
+                                  } catch (err) {
+                                    console.error('WhatsApp send failed:', err);
+                                    toast.error('Feedback link send nahi hua');
+                                  }
+                                }}
+                                className="px-3 py-1.5 bg-green-600 text-white text-sm rounded hover:bg-green-700"
                               >
                                 Mark Delivered
                               </button>
