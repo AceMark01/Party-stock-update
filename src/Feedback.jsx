@@ -1,4 +1,4 @@
-// src/Feedback.jsx - Party-wise Feedback Form (Next-Level UI/UX + Fixed Audio Upload)
+// src/Feedback.jsx - Party-wise Feedback Form with stock_unique_key link
 
 import { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
@@ -9,6 +9,7 @@ import supabase from './supabaseClient';
 function Feedback() {
   const [searchParams] = useSearchParams();
   const party = searchParams.get('party') || 'Unknown Party';
+  const stockUniqueKey = searchParams.get('key') || null; // ← Yeh naya: stock batch key
 
   const [rating, setRating] = useState(0); // 1=Poor, 2=Average, 3=Good, 4=Best, 5=Excellence
   const [hoverRating, setHoverRating] = useState(0);
@@ -108,13 +109,14 @@ function Feedback() {
       console.log('No audio recorded');
     }
 
-    // Feedback data save
+    // Feedback data save - stock_unique_key add kiya
     const feedbackData = {
       party,
       rating,
       rating_label: ratingLabels[rating - 1],
       remark,
       audio_url: audioUrl,
+      stock_unique_key: stockUniqueKey,  // ← Yeh naya: stock batch se link
       submitted_at: new Date().toISOString()
     };
 
@@ -125,7 +127,7 @@ function Feedback() {
 
       toast.success('Feedback submit ho gaya! Shukriya.');
 
-      // Low rating → owner ko WhatsApp alert
+      // Low rating → owner ko WhatsApp alert (stock_unique_key bhi add)
       if (rating <= 2) {
         const ownerMessage = `
 Low Feedback Alert!
@@ -134,7 +136,8 @@ Party: ${party}
 Rating: ${ratingLabels[rating - 1]} (${rating} stars)
 Remark: ${remark || 'No remark'}
 Audio: ${audioUrl || 'No audio'}
-Time: ${new Date().toLocaleString()}
+Stock Batch Key: ${stockUniqueKey || 'N/A'}
+Submitted: ${new Date().toLocaleString()}
         `;
 
         try {
@@ -173,6 +176,11 @@ Time: ${new Date().toLocaleString()}
         <div className="bg-linear-to-r from-indigo-600 to-purple-600 p-6 text-white text-center">
           <h1 className="text-2xl sm:text-3xl font-bold">Feedback for {party}</h1>
           <p className="text-indigo-100 mt-2">Help us improve your experience</p>
+          {stockUniqueKey && (
+            <p className="text-xs text-indigo-200 mt-2">
+              Related Stock Batch: {stockUniqueKey.substring(0, 8)}...
+            </p>
+          )}
         </div>
 
         {/* Form */}

@@ -7,6 +7,7 @@ function App() {
   const [items, setItems] = useState([]);
   const [totalItems, setTotalItems] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [actionLogs, setActionLogs] = useState({}); // product_name → action_status
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -43,6 +44,28 @@ function App() {
       setTotalItems(formattedItems.length);
     };
 
+    const loadActionLogs = async () => {
+      const { data, error } = await supabase
+        .from('action_logs')
+        .select('items_name, action_status')
+        .eq('party_name', p);
+
+      if (error) {
+        console.error('Action logs load error:', error);
+        return;
+      }
+
+      const logsMap = {};
+      data.forEach(log => {
+        if (log.items_name) {
+          logsMap[log.items_name.trim()] = log.action_status;
+        }
+      });
+
+      setActionLogs(logsMap);
+    };
+
+    loadActionLogs();
     loadItems();
   }, [party]);
 
@@ -56,9 +79,22 @@ function App() {
   const toggleRow = (checkbox) => {
     const row = checkbox.closest('tr');
     row.classList.toggle('opacity-35', !checkbox.checked);
-    row.querySelectorAll('input:not(.include-check)').forEach(i => {
+    row.querySelectorAll('input:not(.include-check), select').forEach(i => {
       i.disabled = !checkbox.checked;
     });
+  };
+
+  const handleActionChange = (select) => {
+    const row = select.closest('tr');
+    const value = select.value;
+
+    if (value === 'Not Required' || value === 'Duplicate') {
+      row.classList.add('opacity-35');
+      row.querySelectorAll('input[type="number"], input[type="file"]').forEach(i => i.disabled = true);
+    } else {
+      row.classList.remove('opacity-35');
+      row.querySelectorAll('input[type="number"], input[type="file"]').forEach(i => i.disabled = false);
+    }
   };
 
   const showFile = (input) => {
@@ -73,9 +109,13 @@ function App() {
   const submitForm = async () => {
     setLoading(true);
 
-    const submissions = [];
+    const mainSubmissions = [];
+    const actionUpdates = [];
     const uploadPromises = [];
     let validationFailed = false;
+
+    // Ek hi unique key poore batch ke liye (tino item ya jitne bhi select kiye)
+    const batchUniqueKey = crypto.randomUUID();
 
     document.querySelectorAll('tr').forEach((row) => {
       const check = row.querySelector('.include-check');
@@ -85,16 +125,19 @@ function App() {
       const currentInput = row.querySelector('input[name^="current_"]');
       const orderInput = row.querySelector('input[name^="order_"]');
       const photoInput = row.querySelector('input[type="file"]');
+      const actionSelect = row.querySelector('select[name^="action_"]');
 
       const productName = nameInput?.value?.trim() || '';
       const current = currentInput?.value?.trim() || '';
       const order = orderInput?.value?.trim() || '';
+      const actionStatus = actionSelect?.value?.trim() || '';
       const hasPhoto = photoInput?.files?.length > 0;
 
-      // Validation: All 3 fields must be filled
-      if (!current || !order || !hasPhoto) {
+      const isSpecialAction = actionStatus === 'Not Required' || actionStatus === 'Duplicate';
+
+      if (!isSpecialAction && (!current || !order || !hasPhoto)) {
         validationFailed = true;
-        return; // stop processing this row
+        return;
       }
 
       let photoPromise = Promise.resolve('(No Photo)');
@@ -106,10 +149,7 @@ function App() {
 
         photoPromise = supabase.storage
           .from('stock-photos')
-          .upload(fileName, file, {
-            cacheControl: '3600',
-            upsert: false
-          })
+          .upload(fileName, file, { cacheControl: '3600', upsert: false })
           .then(({ data, error: uploadError }) => {
             if (uploadError) {
               console.error('Photo upload error:', uploadError);
@@ -117,10 +157,7 @@ function App() {
               return '(Upload failed)';
             }
 
-            const { data: urlData } = supabase.storage
-              .from('stock-photos')
-              .getPublicUrl(fileName);
-
+            const { data: urlData } = supabase.storage.from('stock-photos').getPublicUrl(fileName);
             return urlData.publicUrl;
           })
           .catch(err => {
@@ -131,45 +168,71 @@ function App() {
 
       uploadPromises.push(
         photoPromise.then(photoUrl => {
-          submissions.push({
+          const submission = {
             party,
             product_name: productName,
             current_qty: Number(current) || 0,
             order_qty: Number(order) || 0,
-            photo_url: photoUrl
-          });
+            photo_url: photoUrl,
+            action_status: actionStatus,
+            unique_key: batchUniqueKey  // Sab rows mein SAME unique key
+          };
+
+          if (isSpecialAction) {
+            actionUpdates.push({
+              party_name: party,
+              items_name: productName,
+              action_status: actionStatus,
+              unique_id: batchUniqueKey  // Same batch key
+            });
+          } else {
+            mainSubmissions.push(submission);
+          }
         })
       );
     });
 
-    // Stop if validation failed
     if (validationFailed) {
       setLoading(false);
-      toast.error('Har selected row mein Current Qty, Order Qty aur Photo fill karo!');
+      toast.error('Normal rows mein Current Qty, Order Qty aur Photo fill karo!');
       return;
     }
 
     await Promise.all(uploadPromises);
 
-    if (submissions.length === 0) {
+    if (mainSubmissions.length === 0 && actionUpdates.length === 0) {
       setLoading(false);
       toast.error('Koi row select nahi kiya');
       return;
     }
 
-    const { error } = await supabase
-      .from('stock_submissions')
-      .insert(submissions);
+    // Save stock_submissions
+    if (mainSubmissions.length > 0) {
+      const { error } = await supabase.from('stock_submissions').insert(mainSubmissions);
+      if (error) {
+        console.error('Stock submissions error:', error);
+        toast.error('Stock data save nahi hua');
+      }
+    }
+
+    // UPSERT action_logs (update if exists)
+    if (actionUpdates.length > 0) {
+      const { error } = await supabase
+        .from('action_logs')
+        .upsert(actionUpdates, {
+          onConflict: 'party_name, items_name',
+          ignoreDuplicates: false
+        });
+
+      if (error) {
+        console.error('Action logs error:', error);
+        toast.error('Action logs save/update nahi hua');
+      }
+    }
 
     setLoading(false);
-
-    if (error) {
-      console.error('Insert error:', error);
-      toast.error('Data save nahi hua – console check karo');
-    } else {
-      toast.success('Successfully Saved!');
-      setTimeout(() => window.location.reload(), 2500);
-    }
+    toast.success('Successfully Saved!');
+    setTimeout(() => window.location.reload(), 2500);
   };
 
   return (
@@ -209,6 +272,7 @@ function App() {
               <th className="p-3">Select</th>
               <th className="p-3 text-left">Product</th>
               <th className="p-3">Total ₹</th>
+              <th className="p-3">Action</th>
               <th className="p-3">Current</th>
               <th className="p-3">Order</th>
               <th className="p-3">Photo</th>
@@ -217,6 +281,18 @@ function App() {
           <tbody>
             {items.map((item, i) => {
               const idx = i + 1;
+              const prefilledAction = actionLogs[item.name] || '';
+              let statusColor = '';
+              let statusText = '';
+
+              if (prefilledAction === 'Duplicate') {
+                statusColor = 'text-red-600 font-medium';
+                statusText = 'Duplicate (Already Marked)';
+              } else if (prefilledAction === 'Not Required') {
+                statusColor = 'text-blue-600 font-medium';
+                statusText = 'Not Required (Already Marked)';
+              }
+
               return (
                 <tr key={idx} className="border-b hover:bg-gray-50 transition">
                   <td className="text-center p-3">
@@ -232,6 +308,27 @@ function App() {
                     <input type="hidden" name={`name_${idx}`} value={item.name} />
                   </td>
                   <td className="text-gray-600 p-3 text-center">₹{item.sum}</td>
+
+                  <td className="p-3">
+                    <select
+                      name={`action_${idx}`}
+                      defaultValue={prefilledAction}
+                      className={`w-full p-2 border border-gray-300 rounded-xl text-center focus:outline-none focus:ring-2 focus:ring-indigo-500 ${prefilledAction ? 'font-medium' : ''}`}
+                      onChange={(e) => handleActionChange(e.target)}
+                    >
+                      <option value="">Select Action</option>
+                      <option value="Not Required">Not Required</option>
+                      <option value="Duplicate">Duplicate</option>
+                    </select>
+
+                    {/* Status show niche */}
+                    {prefilledAction && (
+                      <div className={`text-xs mt-1 ${statusColor}`}>
+                        {statusText}
+                      </div>
+                    )}
+                  </td>
+
                   <td className="p-3">
                     <input
                       name={`current_${idx}`}
