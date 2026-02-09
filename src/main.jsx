@@ -6,6 +6,7 @@ import Dashboard from './Dashboard.jsx'
 import PartyDetail from './PartyDetail.jsx'
 import Feedback from './Feedback.jsx'
 import ReviewForm from './ReviewForm.jsx';
+import FeedbackPage from './feedbackpage.jsx';
 
 import './index.css'
 
@@ -16,6 +17,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
         <Route path="/" element={<App />} />
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/feedback" element={<Feedback />} />
+        <Route path="/feedbackpage" element={<FeedbackPage />} />
         <Route path="/review" element={<ReviewForm />} />
         <Route path="/party/:partyName" element={<PartyDetail />} />
       </Routes>
