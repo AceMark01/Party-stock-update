@@ -1,13 +1,25 @@
-import { useState, useEffect } from 'react';
+// src/App.jsx - Final Updated Version (Desktop/Mobile Mode Buttons + Fixed Camera + UOM Dropdown)
+
+import { useState, useEffect, useRef } from 'react';
 import toast, { Toaster } from 'react-hot-toast';
 import supabase from './supabaseClient';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Camera, Image as ImageIcon, X, Upload, Aperture } from 'lucide-react';
 
 function App() {
   const [party, setParty] = useState('Unknown Party');
   const [items, setItems] = useState([]);
   const [totalItems, setTotalItems] = useState(0);
   const [loading, setLoading] = useState(false);
-  const [actionLogs, setActionLogs] = useState({}); // product_name → action_status
+  const [actionLogs, setActionLogs] = useState({});
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768); // Detect mobile
+
+  // Photo picker modal
+  const [showPhotoPicker, setShowPhotoPicker] = useState(false);
+  const [showCamera, setShowCamera] = useState(false);
+  const [currentPhotoRow, setCurrentPhotoRow] = useState(null);
+  const videoRef = useRef(null);
+  const [cameraStream, setCameraStream] = useState(null);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -67,7 +79,27 @@ function App() {
 
     loadActionLogs();
     loadItems();
+
+    // Detect mobile resize
+    const handleResize = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
   }, [party]);
+
+  useEffect(() => {
+    items.forEach((item, i) => {
+      const idx = i + 1;
+      const row = document.querySelector(`tr[data-row="${idx}"]`);
+      if (row) {
+        const select = row.querySelector('select[name^="action_"]');
+        if (select) {
+          handleActionChange(select);
+        }
+      }
+    });
+  }, [items, actionLogs]);
 
   const toggleAll = (checked) => {
     document.querySelectorAll('.include-check').forEach(c => {
@@ -90,10 +122,10 @@ function App() {
 
     if (value === 'Not Required' || value === 'Duplicate') {
       row.classList.add('opacity-35');
-      row.querySelectorAll('input[type="number"], input[type="file"]').forEach(i => i.disabled = true);
+      row.querySelectorAll('input[type="number"], select[name^="uom_"], input[type="file"]').forEach(i => i.disabled = true);
     } else {
       row.classList.remove('opacity-35');
-      row.querySelectorAll('input[type="number"], input[type="file"]').forEach(i => i.disabled = false);
+      row.querySelectorAll('input[type="number"], select[name^="uom_"], input[type="file"]').forEach(i => i.disabled = false);
     }
   };
 
@@ -114,7 +146,6 @@ function App() {
     const uploadPromises = [];
     let validationFailed = false;
 
-    // Ek hi unique key poore batch ke liye (tino item ya jitne bhi select kiye)
     const batchUniqueKey = crypto.randomUUID();
 
     document.querySelectorAll('tr').forEach((row) => {
@@ -124,18 +155,20 @@ function App() {
       const nameInput = row.querySelector('input[name^="name_"]');
       const currentInput = row.querySelector('input[name^="current_"]');
       const orderInput = row.querySelector('input[name^="order_"]');
+      const uomSelect = row.querySelector('select[name^="uom_"]');
       const photoInput = row.querySelector('input[type="file"]');
       const actionSelect = row.querySelector('select[name^="action_"]');
 
       const productName = nameInput?.value?.trim() || '';
       const current = currentInput?.value?.trim() || '';
       const order = orderInput?.value?.trim() || '';
+      const uom = uomSelect?.value?.trim() || '';
       const actionStatus = actionSelect?.value?.trim() || '';
       const hasPhoto = photoInput?.files?.length > 0;
 
       const isSpecialAction = actionStatus === 'Not Required' || actionStatus === 'Duplicate';
 
-      if (!isSpecialAction && (!current || !order || !hasPhoto)) {
+      if (!isSpecialAction && (!current || !order || !uom || !hasPhoto)) {
         validationFailed = true;
         return;
       }
@@ -173,9 +206,10 @@ function App() {
             product_name: productName,
             current_qty: Number(current) || 0,
             order_qty: Number(order) || 0,
+            uom: uom,
             photo_url: photoUrl,
             action_status: actionStatus,
-            unique_key: batchUniqueKey  // Sab rows mein SAME unique key
+            unique_key: batchUniqueKey
           };
 
           if (isSpecialAction) {
@@ -183,7 +217,7 @@ function App() {
               party_name: party,
               items_name: productName,
               action_status: actionStatus,
-              unique_id: batchUniqueKey  // Same batch key
+              unique_id: batchUniqueKey
             });
           } else {
             mainSubmissions.push(submission);
@@ -194,7 +228,7 @@ function App() {
 
     if (validationFailed) {
       setLoading(false);
-      toast.error('Normal rows mein Current Qty, Order Qty aur Photo fill karo!');
+      toast.error('Normal rows mein Current Qty, Order Qty, UOM aur Photo fill karo!');
       return;
     }
 
@@ -235,6 +269,87 @@ function App() {
     setTimeout(() => window.location.reload(), 2500);
   };
 
+  const openPhotoPicker = (rowIndex) => {
+    setCurrentPhotoRow(rowIndex);
+    setShowPhotoPicker(true);
+  };
+
+  const handleGallerySelect = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      const row = document.querySelector(`tr[data-row="${currentPhotoRow}"]`);
+      if (row) {
+        const fileInput = row.querySelector('input[type="file"]');
+        const dataTransfer = new DataTransfer();
+        dataTransfer.items.add(file);
+        fileInput.files = dataTransfer.files;
+        row.querySelector('.file-name').textContent = `✔ ${file.name}`;
+      }
+      toast.success('Photo attached!');
+    }
+    setShowPhotoPicker(false);
+    setCurrentPhotoRow(null);
+  };
+
+  const openCamera = () => {
+    setShowPhotoPicker(false);
+    setShowCamera(true);
+  };
+
+  useEffect(() => {
+    if (showCamera) {
+      const startCamera = async () => {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: 'environment' }
+          });
+          setCameraStream(stream);
+          if (videoRef.current) {
+            videoRef.current.srcObject = stream;
+            videoRef.current.play();
+          }
+        } catch (err) {
+          console.error('Camera access error:', err);
+          toast.error('Camera access denied or unavailable. Please check permissions.');
+          setShowCamera(false);
+        }
+      };
+      startCamera();
+    }
+
+    return () => {
+      if (cameraStream) {
+        cameraStream.getTracks().forEach(track => track.stop());
+      }
+    };
+  }, [showCamera, cameraStream]);
+
+  const capturePhoto = () => {
+    if (videoRef.current) {
+      const canvas = document.createElement('canvas');
+      canvas.width = videoRef.current.videoWidth;
+      canvas.height = videoRef.current.videoHeight;
+      canvas.getContext('2d').drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
+      canvas.toBlob((blob) => {
+        const file = new File([blob], `camera_photo_${Date.now()}.jpg`, { type: 'image/jpeg' });
+        const row = document.querySelector(`tr[data-row="${currentPhotoRow}"]`);
+        if (row) {
+          const fileInput = row.querySelector('input[type="file"]');
+          const dataTransfer = new DataTransfer();
+          dataTransfer.items.add(file);
+          fileInput.files = dataTransfer.files;
+          row.querySelector('.file-name').textContent = `✔ ${file.name}`;
+        }
+        toast.success('Photo captured!');
+        setShowCamera(false);
+        setCurrentPhotoRow(null);
+        if (cameraStream) {
+          cameraStream.getTracks().forEach(track => track.stop());
+        }
+      }, 'image/jpeg');
+    }
+  };
+
   return (
     <div className="font-sans bg-linear-to-b from-slate-50 to-indigo-50 min-h-screen">
       <Toaster position="bottom-center" />
@@ -257,11 +372,13 @@ function App() {
               Total Items: <span className="font-semibold">{totalItems}</span>
             </div>
           </div>
-          <div className="flex gap-2">
-            <button onClick={() => toggleAll(true)} className="px-3 py-2 bg-white/20 rounded-lg hover:bg-white/30 transition">Enable</button>
-            <button onClick={() => toggleAll(false)} className="px-3 py-2 bg-white/20 rounded-lg hover:bg-white/30 transition">Disable</button>
-            <button onClick={submitForm} className="px-4 py-2 bg-black/30 rounded-lg font-semibold hover:bg-black/40 transition">Submit</button>
-          </div>
+          {!isMobile && (
+            <div className="flex gap-2">
+              <button onClick={() => toggleAll(true)} className="px-3 py-2 bg-white/20 rounded-lg hover:bg-white/30 transition">Enable</button>
+              <button onClick={() => toggleAll(false)} className="px-3 py-2 bg-white/20 rounded-lg hover:bg-white/30 transition">Disable</button>
+              <button onClick={submitForm} className="px-4 py-2 bg-black/30 rounded-lg font-semibold hover:bg-black/40 transition">Submit</button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -275,6 +392,7 @@ function App() {
               <th className="p-3">Action</th>
               <th className="p-3">Current</th>
               <th className="p-3">Order</th>
+              <th className="p-3">UOM</th>
               <th className="p-3">Photo</th>
             </tr>
           </thead>
@@ -294,7 +412,7 @@ function App() {
               }
 
               return (
-                <tr key={idx} className="border-b hover:bg-gray-50 transition">
+                <tr key={idx} data-row={idx} className="border-b hover:bg-gray-50 transition">
                   <td className="text-center p-3">
                     <input
                       type="checkbox"
@@ -321,7 +439,6 @@ function App() {
                       <option value="Duplicate">Duplicate</option>
                     </select>
 
-                    {/* Status show niche */}
                     {prefilledAction && (
                       <div className={`text-xs mt-1 ${statusColor}`}>
                         {statusText}
@@ -344,16 +461,30 @@ function App() {
                     />
                   </td>
                   <td className="p-3">
-                    <label className="inline-block text-xs bg-indigo-50 text-indigo-700 px-3 py-1.5 rounded-full cursor-pointer hover:bg-indigo-100 transition">
-                      📷 Upload
-                      <input
-                        type="file"
-                        name={`photo_${idx}`}
-                        accept="image/*"
-                        hidden
-                        onChange={(e) => showFile(e.target)}
-                      />
-                    </label>
+                    <select
+                      name={`uom_${idx}`}
+                      className="w-24 p-2 border border-gray-300 rounded-xl text-center focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    >
+                      <option value="Nos">Nos</option>
+                      <option value="Pcs">Pcs</option>
+                      <option value="Bundle">Bundle</option>
+                    </select>
+                  </td>
+
+                  <td className="p-3">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      hidden
+                      onChange={(e) => showFile(e.target)}
+                    />
+                    <button
+                      onClick={() => openPhotoPicker(idx)}
+                      className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-50 text-indigo-700 rounded-full hover:bg-indigo-100 transition shadow-sm"
+                    >
+                      <Upload className="h-4 w-4" />
+                      Attach
+                    </button>
                     <div className="file-name text-xs text-indigo-600 mt-1 min-h-[1.2em]"></div>
                   </td>
                 </tr>
@@ -362,6 +493,96 @@ function App() {
           </tbody>
         </table>
       </div>
+
+      {/* Mobile Bottom Sticky Buttons */}
+      {isMobile && (
+        <div className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-gray-200 p-4 shadow-2xl z-50" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
+          <div className="max-w-7xl mx-auto flex gap-2">
+            <button onClick={() => toggleAll(true)} className="flex-1 py-3 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition shadow-md">Enable All</button>
+            <button onClick={() => toggleAll(false)} className="flex-1 py-3 bg-gray-600 text-white rounded-xl hover:bg-gray-700 transition shadow-md">Disable All</button>
+            <button onClick={submitForm} className="flex-1 py-3 bg-green-600 text-white rounded-xl hover:bg-green-700 transition shadow-md disabled:bg-gray-400" disabled={loading}>
+              {loading ? 'Submitting...' : 'Submit'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Photo Picker Bottom Sheet */}
+      <AnimatePresence>
+        {showPhotoPicker && (
+          <motion.div
+            initial={{ y: "100%" }}
+            animate={{ y: 0 }}
+            exit={{ y: "100%" }}
+            transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+            className="fixed bottom-0 left-0 right-0 bg-white rounded-t-3xl p-6 max-h-[70vh] overflow-y-auto z-50 shadow-2xl"
+            style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+          >
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-xl font-bold text-gray-900">Attach Photo</h3>
+              <button onClick={() => setShowPhotoPicker(false)} className="p-1 hover:bg-gray-100 rounded-full">
+                <X className="h-6 w-6 text-gray-500" />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-3 gap-4">
+              {/* Camera */}
+              <button onClick={openCamera} className="flex flex-col items-center gap-2 p-5 bg-blue-50 rounded-2xl border-2 border-dashed border-blue-300 hover:border-blue-500 transition cursor-pointer">
+                <Camera className="h-8 w-8 text-blue-600" />
+                <span className="text-blue-700 font-medium text-sm">Camera</span>
+              </button>
+
+              {/* Gallery */}
+              <label className="flex flex-col items-center gap-2 p-5 bg-green-50 rounded-2xl border-2 border-dashed border-green-300 hover:border-green-500 transition cursor-pointer">
+                <ImageIcon className="h-8 w-8 text-green-600" />
+                <span className="text-green-700 font-medium text-sm">Gallery</span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleGallerySelect}
+                  hidden
+                />
+              </label>
+
+              {/* Cancel */}
+              <button onClick={() => setShowPhotoPicker(false)} className="flex flex-col items-center gap-2 p-5 bg-gray-100 rounded-2xl hover:bg-gray-200 transition">
+                <X className="h-8 w-8 text-gray-600" />
+                <span className="text-gray-700 font-medium text-sm">Cancel</span>
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Camera Capture Bottom Sheet */}
+      <AnimatePresence>
+        {showCamera && (
+          <motion.div
+            initial={{ y: "100%" }}
+            animate={{ y: 0 }}
+            exit={{ y: "100%" }}
+            transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+            className="fixed bottom-0 left-0 right-0 bg-white rounded-t-3xl p-6 max-h-[90vh] overflow-y-auto z-50 shadow-2xl"
+            style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+          >
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-xl font-bold text-gray-900">Live Camera</h3>
+              <button onClick={() => { setShowCamera(false); if (cameraStream) cameraStream.getTracks().forEach(track => track.stop()); }} className="p-1 hover:bg-gray-100 rounded-full">
+                <X className="h-6 w-6 text-gray-500" />
+              </button>
+            </div>
+
+            <div className="relative w-full h-[50vh] bg-black rounded-2xl overflow-hidden mb-6">
+              <video ref={videoRef} className="w-full h-full object-cover" playsInline autoPlay />
+            </div>
+
+            <button onClick={capturePhoto} className="w-full py-4 bg-indigo-600 text-white rounded-xl font-semibold hover:bg-indigo-700 transition flex items-center justify-center gap-2">
+              <Aperture className="h-5 w-5" />
+              Capture Photo
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
