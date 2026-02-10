@@ -1,4 +1,4 @@
-// src/feedbackpage.jsx - Final Complete & Working Version (All Uploads + Confetti + Dynamic UX)
+// src/feedbackpage.jsx - Final Mobile-First Fixed Bottom Buttons (Sticky on All Devices)
 
 import { useState, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
@@ -10,7 +10,7 @@ import Confetti from 'react-confetti';
 function FeedbackPage() {
   const [searchParams] = useSearchParams();
   const party = searchParams.get('party') || 'Unknown Party';
-  const transactionKey = searchParams.get('key') || 'Unknown Key'; // 'key' from URL
+  const transactionKey = searchParams.get('key') || 'Unknown Key';
 
   const [rating, setRating] = useState(0);
   const [hoverRating, setHoverRating] = useState(0);
@@ -23,6 +23,7 @@ function FeedbackPage() {
   const [likedOptions, setLikedOptions] = useState([]);
   const [loading, setLoading] = useState(false);
   const [showConfetti, setShowConfetti] = useState(false);
+  const [showAdditional, setShowAdditional] = useState(false);
 
   const mediaRecorderRef = useRef(null);
   const audioChunksRef = useRef([]);
@@ -146,14 +147,17 @@ function FeedbackPage() {
     );
   };
 
+  const handleContinue = () => {
+    if (rating === 0) return toast.error('Please select a rating first');
+    setShowAdditional(true);
+  };
+
   const submitFeedback = async () => {
     if (rating === 0) return toast.error('Please select a rating');
 
     setLoading(true);
 
-    let audioUrl = null;
-    let photoUrl = null;
-    let videoUrl = null;
+    let audioUrl = null, photoUrl = null, videoUrl = null;
 
     try {
       // Audio upload
@@ -227,6 +231,7 @@ function FeedbackPage() {
       setPhotoFile(null);
       setVideoFile(null);
       setLikedOptions([]);
+      setShowAdditional(false);
     } catch (err) {
       console.error('Submit error:', err);
       toast.error('Failed to save feedback');
@@ -236,7 +241,7 @@ function FeedbackPage() {
   };
 
   return (
-    <div className="min-h-screen bg-linear-to-br from-indigo-50 via-white to-purple-50 flex items-center justify-center p-4 md:p-8 relative overflow-hidden">
+    <div className="min-h-screen bg-linear-to-br from-indigo-50 via-white to-purple-50 flex flex-col">
       <Toaster position="top-center" reverseOrder={false} />
 
       {showConfetti && (
@@ -251,179 +256,190 @@ function FeedbackPage() {
         />
       )}
 
-      <div className="w-full max-w-2xl bg-white/95 backdrop-blur-2xl rounded-3xl shadow-2xl border border-white/40 overflow-hidden">
-        {/* Header */}
-        <div className="bg-linear-to-r from-indigo-600 via-purple-600 to-pink-600 p-8 text-white text-center relative overflow-hidden">
-          <div className="absolute inset-0 bg-black/10"></div>
-          <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight relative z-10">
-            Feedback for {party}
-          </h1>
-          <p className="text-indigo-100 mt-3 text-lg relative z-10">
-            Help us serve you better
-          </p>
-          <p className="text-xs md:text-sm text-indigo-200 mt-2 relative z-10">
-            Transaction ID: {transactionKey}
-          </p>
-        </div>
-
-        {/* Form */}
-        <div className="p-6 md:p-10 space-y-10">
-          {/* Star Rating */}
-          <div className="text-center">
-            <p className="text-xl font-medium text-gray-800 mb-4">
-              My experience was...
+      {/* Scrollable Content */}
+      <div className="flex-1 overflow-y-auto pb-32"> {/* pb-32 for bottom button space */}
+        <div className="max-w-2xl mx-auto p-4 md:p-8">
+          {/* Header */}
+          <div className="bg-linear-to-r from-indigo-600 via-purple-600 to-pink-600 p-8 text-white text-center rounded-3xl shadow-xl mb-8">
+            <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight">
+              Feedback for {party}
+            </h1>
+            <p className="text-indigo-100 mt-3 text-lg">
+              Help us serve you better
             </p>
-            <div className="flex justify-center gap-3 md:gap-4">
-              {[1, 2, 3, 4, 5].map(star => (
-                <button
-                  key={star}
-                  type="button"
-                  onClick={() => setRating(star)}
-                  onMouseEnter={() => setHoverRating(star)}
-                  onMouseLeave={() => setHoverRating(0)}
-                  className="focus:outline-none transition-all duration-300 hover:scale-110 active:scale-95"
-                >
-                  <Star
-                    className={`h-12 w-12 md:h-14 md:w-14 drop-shadow-lg ${
-                      (hoverRating >= star || rating >= star) ? 'text-yellow-400 fill-yellow-400' : 'text-gray-300'
-                    } transition-all duration-300`}
-                  />
-                </button>
-              ))}
-            </div>
-            {rating > 0 && (
-              <p className="mt-6 text-2xl md:text-3xl font-bold text-gray-900 flex items-center justify-center gap-3 animate-bounce">
-                {ratingLabels[rating - 1]} {ratingEmojis[rating - 1]}
-              </p>
-            )}
+            <p className="text-xs md:text-sm text-indigo-200 mt-2">
+              Transaction ID: {transactionKey}
+            </p>
           </div>
 
-          {/* Dynamic Tell us more */}
-          <div className="space-y-3">
-            <label className="block text-lg font-semibold text-gray-800">
-              {getRemarkTitle()}
-            </label>
-            <p className="text-sm text-gray-500">{getRemarkDescription()}</p>
-            <textarea
-              value={remark}
-              onChange={e => setRemark(e.target.value)}
-              rows={4}
-              className="w-full px-5 py-4 border border-gray-300 rounded-2xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 resize-none shadow-sm"
-              placeholder={getRemarkPlaceholder()}
-            />
-          </div>
-
-          {/* Dynamic What did you like? */}
-          <div className="space-y-3">
-            <label className="block text-lg font-semibold text-gray-800">
-              {getLikedTitle()}
-            </label>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {getLikedCheckboxes().map((option, i) => (
-                <div key={i} className="flex items-center gap-3 bg-gray-50 p-4 rounded-xl hover:bg-indigo-50 transition">
-                  <input
-                    type="checkbox"
-                    id={`liked-${i}`}
-                    checked={likedOptions.includes(option)}
-                    onChange={() => toggleLiked(option)}
-                    className="h-5 w-5 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500"
-                  />
-                  <label htmlFor={`liked-${i}`} className="text-gray-700 cursor-pointer text-sm md:text-base">
-                    {option}
-                  </label>
+          {/* Step 1: Rating + Remark */}
+          {!showAdditional && (
+            <div className="space-y-10 bg-white/95 backdrop-blur-xl p-8 rounded-3xl shadow-xl border border-white/40">
+              <div className="text-center">
+                <p className="text-xl font-medium text-gray-800 mb-5">
+                  How was your experience?
+                </p>
+                <div className="flex justify-center gap-4">
+                  {[1, 2, 3, 4, 5].map((star) => (
+                    <button
+                      key={star}
+                      type="button"
+                      onClick={() => setRating(star)}
+                      onMouseEnter={() => setHoverRating(star)}
+                      onMouseLeave={() => setHoverRating(0)}
+                      className="focus:outline-none transition-transform hover:scale-110 active:scale-95"
+                    >
+                      <Star
+                        className={`h-14 w-14 drop-shadow-md ${
+                          (hoverRating >= star || rating >= star) ? 'text-yellow-400 fill-yellow-400' : 'text-gray-300'
+                        } transition-all duration-300`}
+                      />
+                    </button>
+                  ))}
                 </div>
-              ))}
-            </div>
-          </div>
+                {rating > 0 && (
+                  <p className="mt-6 text-2xl md:text-3xl font-bold text-gray-900 flex items-center justify-center gap-3">
+                    {ratingLabels[rating - 1]} {ratingEmojis[rating - 1]}
+                  </p>
+                )}
+              </div>
 
-          {/* Media Uploads */}
-          <div className="grid md:grid-cols-3 gap-6">
-            {/* Audio */}
-            <div className="space-y-3">
-              <label className="block text-base font-medium text-gray-700">
-                Voice Note
-              </label>
-              <button
-                onClick={recording ? stopAudioRecording : startAudioRecording}
-                className={`w-full py-4 rounded-2xl font-medium transition-all flex items-center justify-center gap-3 shadow-sm ${
-                  recording ? 'bg-red-600 text-white hover:bg-red-700' : 'bg-indigo-600 text-white hover:bg-indigo-700'
-                }`}
-              >
-                {recording ? <Loader2 className="h-5 w-5 animate-spin" /> : <Mic className="h-5 w-5" />}
-                {recording ? 'Stop Recording' : 'Record Audio'}
-              </button>
-              {audioBlob && (
-                <audio controls className="w-full rounded-xl">
-                  <source src={URL.createObjectURL(audioBlob)} type="audio/webm" />
-                </audio>
-              )}
+              <div className="space-y-3">
+                <label className="block text-lg font-semibold text-gray-800">
+                  {getRemarkTitle()}
+                </label>
+                <p className="text-sm text-gray-500">{getRemarkDescription()}</p>
+                <textarea
+                  value={remark}
+                  onChange={(e) => setRemark(e.target.value)}
+                  rows={4}
+                  className="w-full px-5 py-4 border border-gray-300 rounded-2xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 resize-none shadow-sm"
+                  placeholder={getRemarkPlaceholder()}
+                />
+              </div>
             </div>
+          )}
 
-            {/* Photo */}
-            <div className="space-y-3">
-              <label className="block text-base font-medium text-gray-700">
-                Photo
-              </label>
-              <label className="w-full py-4 bg-indigo-50 rounded-2xl border-2 border-dashed border-indigo-300 hover:border-indigo-500 transition flex flex-col items-center cursor-pointer">
-                <ImageIcon className="h-8 w-8 text-indigo-500 mb-2" />
-                <span className="text-indigo-600 font-medium">Select Photo</span>
-                <input type="file" accept="image/*" onChange={handlePhotoUpload} hidden />
-              </label>
-              {photoFile && <p className="text-sm text-green-600">Selected: {photoFile.name}</p>}
-            </div>
+          {/* Step 2: Likes + Media */}
+          {showAdditional && (
+            <div className="space-y-10 bg-white/95 backdrop-blur-xl p-8 rounded-3xl shadow-xl border border-white/40">
+              <div className="space-y-4">
+                <label className="block text-lg font-semibold text-gray-800">
+                  {getLikedTitle()}
+                </label>
+                <div className="grid grid-cols-1 gap-3">
+                  {getLikedCheckboxes().map((option, i) => (
+                    <div key={i} className="flex items-center gap-3 bg-gray-50 p-4 rounded-xl hover:bg-indigo-50 transition">
+                      <input
+                        type="checkbox"
+                        id={`liked-${i}`}
+                        checked={likedOptions.includes(option)}
+                        onChange={() => toggleLiked(option)}
+                        className="h-5 w-5 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500"
+                      />
+                      <label htmlFor={`liked-${i}`} className="text-gray-700 cursor-pointer text-base">
+                        {option}
+                      </label>
+                    </div>
+                  ))}
+                </div>
+              </div>
 
-            {/* Video */}
-            <div className="space-y-3">
-              <label className="block text-base font-medium text-gray-700">
-                Video
-              </label>
-              <div className="grid grid-cols-2 gap-3">
-                <label className="py-4 bg-purple-50 rounded-2xl border-2 border-dashed border-purple-300 hover:border-purple-500 transition flex flex-col items-center cursor-pointer">
-                  <Video className="h-6 w-6 text-purple-500 mb-1" />
-                  <span className="text-purple-600 text-sm font-medium">Select Video</span>
-                  <input type="file" accept="video/*" onChange={handleVideoUpload} hidden />
+              {/* Media Uploads */}
+              <div className="space-y-6">
+                <label className="block text-lg font-semibold text-gray-800">
+                  Add media (optional)
                 </label>
 
-                <button
-                  onClick={videoRecording ? stopVideoRecording : startVideoRecording}
-                  className={`py-4 rounded-2xl font-medium transition flex flex-col items-center ${
-                    videoRecording ? 'bg-red-600 text-white' : 'bg-purple-600 text-white hover:bg-purple-700'
-                  }`}
-                >
-                  {videoRecording ? <Loader2 className="h-6 w-6 animate-spin mb-1" /> : <Camera className="h-6 w-6 mb-1" />}
-                  {videoRecording ? 'Stop' : 'Record'}
-                </button>
+                <div className="grid grid-cols-3 gap-4">
+                  {/* Photo */}
+                  <label className="flex flex-col items-center gap-2 p-5 bg-indigo-50 rounded-2xl border-2 border-dashed border-indigo-300 hover:border-indigo-500 transition cursor-pointer">
+                    <ImageIcon className="h-8 w-8 text-indigo-600" />
+                    <span className="text-indigo-700 font-medium text-sm">Photo</span>
+                    <input type="file" accept="image/*" onChange={handlePhotoUpload} hidden />
+                  </label>
+
+                  {/* Video */}
+                  <label className="flex flex-col items-center gap-2 p-5 bg-purple-50 rounded-2xl border-2 border-dashed border-purple-300 hover:border-purple-500 transition cursor-pointer">
+                    <Video className="h-8 w-8 text-purple-600" />
+                    <span className="text-purple-700 font-medium text-sm">Video</span>
+                    <input type="file" accept="video/*" onChange={handleVideoUpload} hidden />
+                  </label>
+
+                  {/* Audio */}
+                  <button
+                    onClick={recording ? stopAudioRecording : startAudioRecording}
+                    className={`flex flex-col items-center gap-2 p-5 rounded-2xl border-2 border-dashed transition ${
+                      recording 
+                        ? 'bg-red-50 border-red-300 text-red-600 hover:bg-red-100' 
+                        : 'bg-indigo-50 border-indigo-300 text-indigo-600 hover:bg-indigo-100'
+                    }`}
+                  >
+                    {recording ? (
+                      <Loader2 className="h-8 w-8 animate-spin" />
+                    ) : (
+                      <Mic className="h-8 w-8" />
+                    )}
+                    <span className="font-medium text-sm">
+                      {recording ? 'Stop' : 'Voice'}
+                    </span>
+                  </button>
+                </div>
+
+                {/* Previews */}
+                <div className="space-y-4">
+                  {audioBlob && (
+                    <div className="bg-gray-50 p-3 rounded-xl">
+                      <audio controls className="w-full">
+                        <source src={URL.createObjectURL(audioBlob)} type="audio/webm" />
+                      </audio>
+                    </div>
+                  )}
+                  {photoFile && (
+                    <div className="bg-gray-50 p-3 rounded-xl">
+                      <p className="text-sm text-green-600">Photo selected: {photoFile.name}</p>
+                    </div>
+                  )}
+                  {videoFile && (
+                    <div className="bg-gray-50 p-3 rounded-xl">
+                      <p className="text-sm text-green-600">Video selected</p>
+                    </div>
+                  )}
+                </div>
               </div>
-              {videoFile && <p className="text-sm text-green-600">Video ready</p>}
             </div>
-          </div>
+          )}
+        </div>
+      </div>
 
-          {/* Submit */}
-          <button
-            onClick={submitFeedback}
-            disabled={loading || rating === 0}
-            className={`w-full py-5 rounded-2xl font-bold text-lg transition-all flex items-center justify-center gap-3 shadow-xl ${
-              loading || rating === 0 ? 'bg-gray-400 cursor-not-allowed' : 'bg-linear-to-r from-indigo-600 to-purple-700 hover:from-indigo-700 hover:to-purple-800 text-white'
-            }`}
-          >
-            {loading ? (
-              <>
-                <Loader2 className="h-6 w-6 animate-spin" />
-                Submitting...
-              </>
-            ) : (
-              <>
-                <Send className="h-6 w-6" />
-                Submit Feedback
-              </>
-            )}
-          </button>
-
-          {rating > 0 && rating <= 3 && (
-            <div className="text-center text-sm text-amber-700 bg-amber-50 p-4 rounded-2xl border border-amber-200">
-              <AlertCircle className="h-5 w-5 inline mr-2" />
-              Thank you for your honest feedback. We'll reach out soon!
-            </div>
+      {/* Fixed Bottom Buttons - Always Visible */}
+      <div className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-gray-200 p-4 shadow-2xl z-50 safe-area-inset-bottom">
+        <div className="max-w-2xl mx-auto flex gap-4">
+          {!showAdditional ? (
+            <>
+              <button
+                onClick={handleContinue}
+                disabled={rating === 0 || loading}
+                className="flex-1 py-4 px-6 rounded-2xl font-bold text-white bg-indigo-600 hover:bg-indigo-700 transition disabled:bg-gray-400 disabled:cursor-not-allowed shadow-lg active:scale-95"
+              >
+                Continue
+              </button>
+              <button
+                onClick={submitFeedback}
+                disabled={rating === 0 || loading}
+                className="flex-1 py-4 px-6 rounded-2xl font-bold text-white bg-green-600 hover:bg-green-700 transition disabled:bg-gray-400 disabled:cursor-not-allowed shadow-lg active:scale-95"
+              >
+                Submit
+              </button>
+            </>
+          ) : (
+            <button
+              onClick={submitFeedback}
+              disabled={loading}
+              className="w-full py-4 px-6 rounded-2xl font-bold text-white bg-green-600 hover:bg-green-700 transition disabled:bg-gray-400 disabled:cursor-not-allowed shadow-lg active:scale-95"
+            >
+              {loading ? 'Submitting...' : 'Submit Feedback'}
+            </button>
           )}
         </div>
       </div>
