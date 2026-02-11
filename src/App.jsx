@@ -1,4 +1,4 @@
-// src/App.jsx - Final Updated Version (Improved Mobile Bottom + Enhanced Camera No Blink)
+// src/App.jsx - Final Working Version (Black Image from Camera Fixed)
 
 import { useState, useEffect, useRef } from 'react';
 import toast, { Toaster } from 'react-hot-toast';
@@ -14,7 +14,6 @@ function App() {
   const [actionLogs, setActionLogs] = useState({});
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
 
-  // Photo picker & camera states
   const [showPhotoPicker, setShowPhotoPicker] = useState(false);
   const [showCamera, setShowCamera] = useState(false);
   const [currentPhotoRow, setCurrentPhotoRow] = useState(null);
@@ -301,7 +300,7 @@ function App() {
           setCameraStream(stream);
           if (videoRef.current) {
             videoRef.current.srcObject = stream;
-            videoRef.current.play().catch(e => console.error('Video play error:', e));
+            await videoRef.current.play().catch(e => console.error('Video play error:', e));
           }
         } catch (err) {
           console.error('Camera access error:', err);
@@ -325,50 +324,70 @@ function App() {
     setCapturing(true);
 
     try {
-      // Quick hide to prevent white flash perception
-      if (videoRef.current) videoRef.current.style.opacity = '0';
+      const video = videoRef.current;
+
+      // Wait until video is really ready (important for mobile)
+      if (video.readyState < video.HAVE_ENOUGH_DATA) {
+        await new Promise(resolve => setTimeout(resolve, 400));
+      }
 
       const canvas = document.createElement('canvas');
-      canvas.width = videoRef.current.videoWidth;
-      canvas.height = videoRef.current.videoHeight;
+      canvas.width = video.videoWidth || 1280;
+      canvas.height = video.videoHeight || 720;
       const ctx = canvas.getContext('2d');
-      ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
 
-      // Restore visibility quickly
-      if (videoRef.current) videoRef.current.style.opacity = '1';
+      if (!ctx) throw new Error('Canvas context failed');
 
-      canvas.toBlob((blob) => {
-        if (!blob) return;
+      // Fill white background (prevents black areas in some browsers)
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-        const file = new File([blob], `capture_${Date.now()}.jpg`, { type: 'image/jpeg' });
+      // Draw image twice → very effective fix for black frame on mobile
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-        const row = document.querySelector(`tr[data-row="${currentPhotoRow}"]`);
-        if (row) {
-          const fileInput = row.querySelector('input[type="file"]');
-          const dataTransfer = new DataTransfer();
-          dataTransfer.items.add(file);
-          fileInput.files = dataTransfer.files;
-          row.querySelector('.file-name').textContent = `✔ ${file.name}`;
-        }
+      // Small delay + opacity trick to reduce perceived flash/black
+      video.style.opacity = '0';
+      await new Promise(r => setTimeout(r, 80));
+      video.style.opacity = '1';
 
-        toast.success('Photo captured!');
-        setTimeout(() => {
-          setShowCamera(false);
-          setCurrentPhotoRow(null);
-          setCapturing(false);
-        }, 400); // slight delay for better UX
-      }, 'image/jpeg', 0.92);
+      const blob = await new Promise((resolve) => {
+        canvas.toBlob(resolve, 'image/jpeg', 0.92);
+      });
+
+      if (!blob || blob.size < 2000) {
+        throw new Error('Captured image is empty or corrupted');
+      }
+
+      const file = new File([blob], `capture_${Date.now()}.jpg`, { type: 'image/jpeg' });
+
+      const row = document.querySelector(`tr[data-row="${currentPhotoRow}"]`);
+      if (row) {
+        const fileInput = row.querySelector('input[type="file"]');
+        const dataTransfer = new DataTransfer();
+        dataTransfer.items.add(file);
+        fileInput.files = dataTransfer.files;
+        row.querySelector('.file-name').textContent = `✔ ${file.name}`;
+      }
+
+      toast.success('Photo captured successfully!');
+
+      setTimeout(() => {
+        setShowCamera(false);
+        setCurrentPhotoRow(null);
+        setCapturing(false);
+      }, 600);
 
     } catch (err) {
-      console.error('Capture error:', err);
-      toast.error('Photo capture failed');
+      console.error('Capture failed:', err);
+      toast.error('Camera se photo capture nahi hui – gallery use karo ya page refresh karke try karo');
       setCapturing(false);
       if (videoRef.current) videoRef.current.style.opacity = '1';
     }
   };
 
   return (
-    <div className="font-sans bg-linear-to-b from-slate-50 to-indigo-50 min-h-screen">
+    <div className="font-sans bg-gradient-to-b from-slate-50 to-indigo-50 min-h-screen">
       <Toaster position="bottom-center" />
 
       {loading && (
@@ -380,7 +399,7 @@ function App() {
         </div>
       )}
 
-      <div className="sticky top-0 z-50 bg-linear-to-r from-indigo-600 to-violet-600 text-white shadow-md">
+      <div className="sticky top-0 z-50 bg-gradient-to-r from-indigo-600 to-violet-600 text-white shadow-md">
         <div className="max-w-7xl mx-auto px-4 py-3 flex justify-between items-center">
           <div>
             <div className="text-xs opacity-80">Stock Update</div>
@@ -399,7 +418,7 @@ function App() {
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto p-4 bg-white rounded-2xl shadow-xl mt-4 overflow-x-auto">
+      <div className="max-w-7xl mx-auto p-4 bg-white rounded-2xl shadow-xl mt-4 overflow-x-auto pb-24 md:pb-8">
         <table className="w-full text-sm">
           <thead>
             <tr className="text-indigo-700">
@@ -508,27 +527,27 @@ function App() {
         </table>
       </div>
 
-      {/* Mobile Bottom Sticky Buttons - Raised a bit */}
+      {/* Mobile Bottom Bar - Raised */}
       {isMobile && (
-        <div 
-          className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-gray-200 p-4 shadow-2xl z-50 pb-8 sm:pb-10"
-          style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom))' }}
+        <div
+          className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-gray-200 p-4 shadow-2xl z-50"
+          style={{ paddingBottom: 'calc(1.5rem + env(safe-area-inset-bottom))' }}
         >
           <div className="max-w-7xl mx-auto flex gap-3">
-            <button 
-              onClick={() => toggleAll(true)} 
+            <button
+              onClick={() => toggleAll(true)}
               className="flex-1 py-3.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition shadow-md text-base font-medium"
             >
               Enable All
             </button>
-            <button 
-              onClick={() => toggleAll(false)} 
+            <button
+              onClick={() => toggleAll(false)}
               className="flex-1 py-3.5 bg-gray-600 text-white rounded-xl hover:bg-gray-700 transition shadow-md text-base font-medium"
             >
               Disable All
             </button>
-            <button 
-              onClick={submitForm} 
+            <button
+              onClick={submitForm}
               className="flex-1 py-3.5 bg-green-600 text-white rounded-xl hover:bg-green-700 transition shadow-md disabled:bg-gray-400 text-base font-medium"
               disabled={loading}
             >
@@ -538,7 +557,7 @@ function App() {
         </div>
       )}
 
-      {/* Photo Picker Bottom Sheet */}
+      {/* Photo Picker */}
       <AnimatePresence>
         {showPhotoPicker && (
           <motion.div
@@ -577,7 +596,7 @@ function App() {
         )}
       </AnimatePresence>
 
-      {/* Enhanced Camera Capture Bottom Sheet */}
+      {/* Camera View */}
       <AnimatePresence>
         {showCamera && (
           <motion.div
@@ -590,11 +609,11 @@ function App() {
           >
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-xl font-bold text-gray-900">Live Camera</h3>
-              <button 
-                onClick={() => { 
-                  setShowCamera(false); 
-                  if (cameraStream) cameraStream.getTracks().forEach(track => track.stop()); 
-                }} 
+              <button
+                onClick={() => {
+                  setShowCamera(false);
+                  if (cameraStream) cameraStream.getTracks().forEach(track => track.stop());
+                }}
                 className="p-1 hover:bg-gray-100 rounded-full"
               >
                 <X className="h-6 w-6 text-gray-500" />
@@ -602,19 +621,18 @@ function App() {
             </div>
 
             <div className="relative w-full h-[55vh] sm:h-[60vh] bg-black rounded-2xl overflow-hidden mb-6 shadow-inner">
-              <video 
-                ref={videoRef} 
-                className="w-full h-full object-cover" 
-                playsInline 
-                autoPlay 
-                muted 
+              <video
+                ref={videoRef}
+                className="w-full h-full object-cover"
+                playsInline
+                autoPlay
+                muted
               />
-              {/* Optional subtle flash overlay simulation */}
-              <div className={`absolute inset-0 bg-white pointer-events-none transition-opacity duration-150 ${capturing ? 'opacity-30' : 'opacity-0'}`} />
+              <div className={`absolute inset-0 bg-white pointer-events-none transition-opacity duration-200 ${capturing ? 'opacity-40' : 'opacity-0'}`} />
             </div>
 
-            <button 
-              onClick={capturePhoto} 
+            <button
+              onClick={capturePhoto}
               disabled={capturing}
               className="w-full py-4 bg-indigo-600 text-white rounded-xl font-semibold hover:bg-indigo-700 transition flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
