@@ -590,9 +590,9 @@ function App() {
                           className="w-28 p-2 border border-gray-300 rounded-xl text-center focus:outline-none focus:ring-2 focus:ring-indigo-500"
                           disabled
                         >
+                          <option value="pcs">pcs</option>
                           <option value="KGS">KGS</option>
                           <option value="pkt">pkt</option>
-                          <option value="pcs">pcs</option>
                           <option value="sheet">sheet</option>
                           <option value="dzn">dzn</option>
                           <option value="Ream">Ream</option>

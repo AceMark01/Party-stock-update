@@ -116,16 +116,15 @@ function Dashboard() {
 
     const message = `Dear ${sub.party},
 
-We have received your recent stock update request.
+We’ve received your latest stock update request.
 
-Kindly review and approve the proposed quantities at your earliest convenience. Your approval helps us process the order quickly and accurately.
+Please review and approve the suggested quantities at your earliest convenience — your approval helps us process orders quickly and accurately.
 
 Approval Link: ${approvalLink}
 
-It takes just 30 seconds — we value your time and feedback!
+It only takes 30 seconds — your input is highly valued.
 
-Thank you for your continued partnership.  
-Looking forward to serving you better.
+Thank you for your continued trust and partnership.
 
 Best regards,  
 Acemark Stationers`;
@@ -141,19 +140,17 @@ Acemark Stationers`;
 
     const message = `Dear ${sub.party},
 
-You are one of our most valued Golden Partners and it is truly an honour to serve you!
+As one of our valued Golden Partners, your satisfaction means everything to us.
 
-Your trust and continued association mean the world to us.
+We’d truly appreciate 30 seconds of your time to share your honest feedback on our recent delivery.
 
-We would be deeply grateful if you could take just 30–45 seconds to share your honest experience with our recent delivery.
-
-Your valuable feedback helps us raise the bar even higher for you.
+Your thoughts help us serve you even better.
 
 Feedback Link: ${feedbackLink}
 
-Thank you from the bottom of our hearts for being part of the Acemark family
+Thank you for being part of the Acemark family.
 
-With warmest regards & gratitude,  
+Warm regards,  
 Acemark Stationers`;
 
     const encoded = encodeURIComponent(message);
