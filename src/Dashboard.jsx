@@ -502,7 +502,7 @@ Acemark Stationers`;
                                 </td>
                                 <td className="px-6 py-4 text-center flex gap-2 justify-center">
                                   <button
-                                    onClick={() => window.open(`https://party-stock-update.vercel.app/feedback?party=${encodeURIComponent(sub.party)}&key=${sub.unique_key}`, '_blank')}
+                                    onClick={() => window.open(`https://party-stock-update.vercel.app/feedbackpage?party=${encodeURIComponent(sub.party)}&key=${sub.unique_key}`, '_blank')}
                                     className="px-3 py-1.5 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 flex items-center gap-1"
                                   >
                                     <ExternalLink size={16} />
