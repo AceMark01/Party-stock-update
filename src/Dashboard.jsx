@@ -1,3 +1,5 @@
+// src/Dashboard.jsx - Updated: Dynamic WhatsApp Number + Professional Message + Exact Link Format
+
 import { useState, useEffect } from 'react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { LayoutDashboard, Clock, CheckCircle, Menu, X } from 'lucide-react';
@@ -8,20 +10,47 @@ function Dashboard() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [submissions, setSubmissions] = useState([]);
+  const [partyMobileMap, setPartyMobileMap] = useState({}); // Cache party → mobile number
   const [loading, setLoading] = useState(true);
 
+  // Load submissions + party mobile numbers
   useEffect(() => {
-    const fetchSubmissions = async () => {
+    const fetchData = async () => {
       setLoading(true);
+
       try {
-        const { data, error } = await supabase
+        // 1. Fetch all submissions
+        const { data: subsData, error: subsError } = await supabase
           .from('stock_submissions')
           .select('*')
           .order('created_at', { ascending: false })
           .limit(200);
 
-        if (error) throw error;
-        setSubmissions(data || []);
+        if (subsError) throw subsError;
+        setSubmissions(subsData || []);
+
+        // 2. Fetch unique parties' mobile numbers from stock_items
+        const uniqueParties = [...new Set(subsData?.map(s => s.party) || [])];
+
+        if (uniqueParties.length > 0) {
+          const { data: mobileData, error: mobileError } = await supabase
+            .from('stock_items')
+            .select('party, party_mob_no')
+            .in('party', uniqueParties);
+
+          if (mobileError) throw mobileError;
+
+          const mobileMap = {};
+          mobileData?.forEach(item => {
+            let mob = item.party_mob_no?.trim();
+            if (mob && !mob.startsWith('91')) {
+              mob = '91' + mob;
+            }
+            if (mob) mobileMap[item.party] = mob;
+          });
+
+          setPartyMobileMap(mobileMap);
+        }
       } catch (err) {
         toast.error('Data load fail hua');
         console.error(err);
@@ -30,11 +59,11 @@ function Dashboard() {
       }
     };
 
-    fetchSubmissions();
+    fetchData();
   }, []);
 
-  const pending = submissions.filter(s => s.status === 'pending' || !s.status);
-  const delivered = submissions.filter(s => s.status === 'delivered');
+  const pending = submissions.filter(s => s.approval_status === 'Pending');
+  const delivered = submissions.filter(s => s.approval_status === 'Approved');
 
   const stats = {
     total: submissions.length,
@@ -56,11 +85,10 @@ function Dashboard() {
     .slice(0, 8);
 
   const updateStatus = async (id, newStatus) => {
-    const updateData = { status: newStatus };
+    const updateData = { approval_status: newStatus };
 
-    // Agar Delivered mark kar rahe ho to delivered_at set kar do
-    if (newStatus === 'delivered') {
-      updateData.delivered_at = new Date().toISOString(); // current date-time
+    if (newStatus === 'Approved') {
+      updateData.delivered_at = new Date().toISOString();
     }
 
     const { error } = await supabase
@@ -79,6 +107,36 @@ function Dashboard() {
         )
       );
     }
+  };
+
+  const sendWhatsApp = (sub) => {
+    const approvalLink = `https://party-stock-update.vercel.app/review?party=${encodeURIComponent(sub.party)}&key=${sub.unique_key}`;
+
+    const message = `Dear ${sub.party},
+
+We have received your recent stock update request.
+
+Kindly review and approve the proposed quantities at your earliest convenience. Your approval helps us process the order quickly and accurately.
+
+Approval Link: ${approvalLink}
+
+It takes just 30 seconds — we value your time and feedback!
+
+Thank you for your continued partnership.  
+Looking forward to serving you better.
+
+Best regards,  
+Acemark Stationers`;
+
+    const encodedMessage = encodeURIComponent(message);
+
+    // Get mobile number from cache or fallback
+    const mobile = partyMobileMap[sub.party] || '919131749390'; // fallback number
+
+    const whatsappUrl = `https://wa.me/${mobile}?text=${encodedMessage}`;
+
+    window.open(whatsappUrl, '_blank');
+    toast.success('WhatsApp opened with approval request!');
   };
 
   return (
@@ -130,7 +188,7 @@ function Dashboard() {
         </div>
       </header>
 
-      {/* Mobile Right Side Menu */}
+      {/* Mobile Menu */}
       {mobileMenuOpen && (
         <>
           <div 
@@ -242,7 +300,7 @@ function Dashboard() {
                             <td className="px-6 py-4 text-center text-sm">
                               {sub.photo_url ? (
                                 <a href={sub.photo_url} target="_blank" className="text-indigo-600 hover:underline">View</a>
-                              ) : sub.photo_url}
+                              ) : 'No Photo'}
                             </td>
                             <td className="px-6 py-4 text-sm text-gray-500">
                               {new Date(sub.created_at).toLocaleDateString('en-IN')}
@@ -283,49 +341,17 @@ function Dashboard() {
                             <td className="px-6 py-4 text-center text-sm">
                               {sub.photo_url ? (
                                 <a href={sub.photo_url} target="_blank" className="text-indigo-600 hover:underline">View</a>
-                              ) : sub.photo_url}
+                              ) : 'No Photo'}
                             </td>
                             <td className="px-6 py-4 text-sm text-gray-500">
                               {new Date(sub.created_at).toLocaleDateString('en-IN')}
                             </td>
                             <td className="px-6 py-4 text-center">
                               <button
-                                onClick={async () => {
-                                  await updateStatus(sub.id, 'delivered');
-
-                                  // Delivery hone ke baad WhatsApp/SMS bhejo
-                                  const feedbackLink = `https://party-stock-update.vercel.app/feedback?party=${encodeURIComponent(sub.party)}`;
-
-                                  const message = `
-                              Your order has been delivered!
-
-                              Party: ${sub.party}
-                              Product: ${sub.product_name}
-
-                              Please give us quick feedback (takes 10 seconds):
-                              ${feedbackLink}
-
-                              Thanks for your business!
-                                  `;
-
-                                  try {
-                                    await fetch('/functions/v1/send-whatsapp', {
-                                      method: 'POST',
-                                      headers: { 'Content-Type': 'application/json' },
-                                      body: JSON.stringify({
-                                        to_number: sub.MobileNo || '919131749390',  // Agar table mein MobileNo hai to yahan se lo
-                                        message: message
-                                      })
-                                    });
-                                    toast.success('Delivery marked & feedback link sent!');
-                                  } catch (err) {
-                                    console.error('WhatsApp send failed:', err);
-                                    toast.error('Feedback link send nahi hua');
-                                  }
-                                }}
-                                className="px-3 py-1.5 bg-green-600 text-white text-sm rounded hover:bg-green-700"
+                                onClick={() => sendWhatsApp(sub)}
+                                className="px-4 py-2 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 transition shadow-sm"
                               >
-                                Mark Delivered
+                                Send Approval Request
                               </button>
                             </td>
                           </tr>
@@ -364,7 +390,7 @@ function Dashboard() {
                             <td className="px-6 py-4 text-center text-sm">
                               {sub.photo_url ? (
                                 <a href={sub.photo_url} target="_blank" className="text-indigo-600 hover:underline">View</a>
-                              ) : sub.photo_url}
+                              ) : 'No Photo'}
                             </td>
                             <td className="px-6 py-4 text-sm text-gray-500">
                               {new Date(sub.created_at).toLocaleDateString('en-IN')}
