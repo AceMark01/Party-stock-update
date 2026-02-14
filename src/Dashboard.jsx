@@ -142,11 +142,9 @@ Acemark Stationers`;
 
     const message = `Dear ${sub.party},
 
-As one of our valued Golden Partners, your satisfaction means everything to us.
+As our valued Golden Partner, your satisfaction matters to us.
 
-We’d truly appreciate 30 seconds of your time to share your honest feedback on our recent delivery.
-
-Your thoughts help us serve you even better.
+Please take just 30 seconds to share your feedback on our recent delivery — your input helps us serve you better.
 
 Feedback Link: ${feedbackLink}
 
