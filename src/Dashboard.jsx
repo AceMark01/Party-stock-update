@@ -120,9 +120,11 @@ We’ve received your latest stock update request.
 
 Please review and approve the suggested quantities at your earliest convenience — your approval helps us process orders quickly and accurately.
 
+Our approval system takes less than 30 seconds to complete.
+
 Approval Link: ${approvalLink}
 
-It only takes 30 seconds — your input is highly valued.
+Your input is highly valued and greatly appreciated.
 
 Thank you for your continued trust and partnership.
 
