@@ -315,7 +315,7 @@ Acemark Stationers`;
                               <td className="px-6 py-4 text-center text-sm">
                                 {sub.photo_url ? <a href={sub.photo_url} target="_blank" className="text-indigo-600 hover:underline">View</a> : 'No Photo'}
                               </td>
-                              <td className="px-6 py-4 text-sm text-gray-500">{new Date(sub.created_at).toLocaleDateString('en-IN')}</td>
+                              <td className="px-6 py-4 text-sm text-gray-500">{new Date(sub.created_at).toLocaleString('en-IN')}</td>
                               <td className="px-6 py-4 text-center flex gap-2 justify-center">
                                 <button
                                   onClick={() => window.open(`https://party-stock-update.vercel.app/review?party=${encodeURIComponent(sub.party)}&key=${sub.unique_key}`, '_blank')}
