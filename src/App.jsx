@@ -8,6 +8,11 @@
 // - UOM dropdown with all options in BOTH normal & special rows
 // - Form auto-saved to localStorage → call aane par ya refresh hone par data wapas load ho jayega
 // - LocalStorage clear ho jata hai successful submit ke baad
+// - New: Saved items from stock_submissions highlighted (bg-yellow-50)
+// - Saved details shown in row (current, order, uom)
+// - Saved count shown in row
+// - Rows remain editable, no disable for saved items
+// - No section above table, only table
 
 import { useState, useEffect, useRef } from 'react';
 import toast, { Toaster } from 'react-hot-toast';
@@ -21,6 +26,7 @@ function App() {
   const [totalItems, setTotalItems] = useState(0);
   const [loading, setLoading] = useState(false);
   const [actionLogs, setActionLogs] = useState({});
+  const [savedSubmissions, setSavedSubmissions] = useState([]); // Load saved from stock_submissions
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   const [showPhotoPicker, setShowPhotoPicker] = useState(false);
   const [showCamera, setShowCamera] = useState(false);
@@ -71,6 +77,21 @@ function App() {
       setTotalItems(formattedItems.length);
     };
 
+    const loadSavedSubmissions = async () => {
+      const { data, error } = await supabase
+        .from('stock_submissions')
+        .select('product_name, current_qty, order_qty, uom, photo_url, created_at')
+        .eq('party', p)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('Saved submissions load error:', error);
+        return;
+      }
+
+      setSavedSubmissions(data || []);
+    };
+
     const loadActionLogs = async () => {
       const { data, error } = await supabase
         .from('action_logs')
@@ -92,6 +113,7 @@ function App() {
       setActionLogs(logsMap);
     };
 
+    loadSavedSubmissions();
     loadActionLogs();
     loadItems();
 
@@ -246,7 +268,6 @@ function App() {
 
       const isSpecialAction = actionStatus === 'Not Required' || actionStatus === 'Duplicate';
 
-      // Photo is now optional → only check current, order, uom
       if (!isSpecialAction && (!current || !order || !uom)) {
         validationFailed = true;
         return;
@@ -339,7 +360,6 @@ function App() {
 
     setLoading(false);
     toast.success('Successfully Saved!');
-    // Clear saved form state after successful submit
     localStorage.removeItem(localStorageKey);
     setTimeout(() => window.location.reload(), 2500);
   };
@@ -527,6 +547,14 @@ function App() {
                   const prefilledAction = actionLogs[item.name] || '';
                   let rowClass = '';
 
+                  // New: Check if saved and get count
+                  const productSaved = savedSubmissions.filter(s => s.product_name === item.name);
+                  const savedCount = productSaved.length;
+                  const lastSaved = productSaved[0]; // Most recent
+                  if (savedCount > 0) {
+                    rowClass = 'bg-yellow-50'; // Highlight saved rows
+                  }
+
                   const rowElement = document.querySelector(`tr[data-row="${idx}"]`);
                   const isChecked = rowElement?.querySelector('.include-check')?.checked;
                   const currentVal = rowElement?.querySelector('input[name^="current_"]')?.value.trim();
@@ -560,6 +588,11 @@ function App() {
                       <td className="font-semibold p-3">
                         {item.name}
                         <input type="hidden" name={`name_${idx}`} value={item.name} />
+                        {savedCount > 0 && (
+                          <div className="text-xs text-yellow-700 mt-1">
+                            Saved {savedCount} times | Last: Current {lastSaved.current_qty}, Order {lastSaved.order_qty}, Unit {lastSaved.uom}, on {new Date(lastSaved.created_at).toLocaleDateString('hi-IN')}
+                          </div>
+                        )}
                       </td>
                       <td className="text-gray-600 p-3 text-center">{item.sum}</td>
                       <td className="text-gray-600 p-3 text-center">{item.last_unit || '—'}</td>
